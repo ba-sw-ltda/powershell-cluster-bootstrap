@@ -76,10 +76,13 @@ before calling any `Install-*` function:
 Set-ClusterBootstrapToolsDir -Path "$PSScriptRoot\.tools"
 ```
 
-**Cross-module note:** `Install-PlatformTools -Platform "Google GKE"` and
-every `Initialize-*Cluster` function call `Invoke-WithSpinner`, which lives
-in [powershell-menu-ui](https://github.com/ba-sw-ltda/powershell-menu-ui),
-not in this module. Import that module too before calling them.
+**Cross-module note:** every `Install-*` function (`Install-Kubectl`,
+`Install-Helm`, `Install-RancherCli`, `Install-PlatformTools`) and every
+`Initialize-*Cluster` function render their single-line "Checking.../
+Downloading.../✓ done" status via `Invoke-ScriptBlockWithSpinner` and
+`Invoke-WithSpinner`, which live in
+[powershell-menu-ui](https://github.com/ba-sw-ltda/powershell-menu-ui), not
+in this module. Import that module too before calling them.
 
 Requires Windows PowerShell 5.1+ or PowerShell 7+. Tested on Windows; the
 cloud-CLI installers and `Update-HostsFile` are Windows-specific (MSI/EXE

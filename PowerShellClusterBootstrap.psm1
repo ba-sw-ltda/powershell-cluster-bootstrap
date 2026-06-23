@@ -79,6 +79,7 @@ function Get-Os {
 #>
 function Install-Kubectl {
     $path = Join-Path $script:ToolsDir "kubectl.exe"
+    [Console]::Write("`r  | kubectl: Checking...")
 
     if (-not (Test-Path $path)) {
         $version = "v1.29.0"
@@ -86,10 +87,12 @@ function Install-Kubectl {
         $ext = if ($os -eq "windows") { ".exe" } else { "" }
         $url = "https://dl.k8s.io/release/$version/bin/$os/$arch/kubectl$ext"
 
-        Write-Host "  Downloading kubectl $version..." -ForegroundColor Cyan
         try {
-            Invoke-WebRequest -Uri $url -OutFile $path -UseBasicParsing
-            if ($os -ne "windows") { chmod +x $path }
+            Invoke-ScriptBlockWithSpinner -Message "kubectl: Downloading $version..." -ScriptBlock {
+                param($Url, $OutFile, $Os)
+                Invoke-WebRequest -Uri $Url -OutFile $OutFile -UseBasicParsing
+                if ($Os -ne "windows") { chmod +x $OutFile }
+            } -ArgumentList @($url, $path, $os) | Out-Null
         } catch {
             Write-Error "Failed to download kubectl: $_"
             exit 1
@@ -97,6 +100,7 @@ function Install-Kubectl {
     }
 
     $v = & $path version --client 2>&1 | Select-String "Client Version|GitVersion" | Select-Object -First 1
+    [Console]::Write("`r" + (" " * 80) + "`r")
     Write-Host "  ✓ kubectl: $($v.ToString().Trim())" -ForegroundColor Green
 }
 
@@ -112,30 +116,34 @@ function Install-Kubectl {
 #>
 function Install-Helm {
     $path = Join-Path $script:ToolsDir "helm.exe"
+    [Console]::Write("`r  | helm: Checking...")
 
     if (-not (Test-Path $path)) {
         $version = "v3.13.3"
         $zip = Join-Path $script:ToolsDir "helm.zip"
         $url = "https://get.helm.sh/helm-$version-windows-amd64.zip"
+        $tmp = Join-Path $script:ToolsDir "helm-tmp"
 
-        Write-Host "  Downloading helm $version..." -ForegroundColor Cyan
         try {
-            Invoke-WebRequest -Uri $url -OutFile $zip -UseBasicParsing
-            $tmp = Join-Path $script:ToolsDir "helm-tmp"
-            Expand-Archive -Path $zip -DestinationPath $tmp -Force
-            $exe = Get-ChildItem -Path $tmp -Recurse -Filter "helm.exe" | Select-Object -First 1
-            if (-not $exe) { throw "helm.exe not found in archive" }
-            Copy-Item -Path $exe.FullName -Destination $path -Force
+            Invoke-ScriptBlockWithSpinner -Message "helm: Downloading $version..." -ScriptBlock {
+                param($Url, $Zip, $Tmp, $Path)
+                Invoke-WebRequest -Uri $Url -OutFile $Zip -UseBasicParsing
+                Expand-Archive -Path $Zip -DestinationPath $Tmp -Force
+                $exe = Get-ChildItem -Path $Tmp -Recurse -Filter "helm.exe" | Select-Object -First 1
+                if (-not $exe) { throw "helm.exe not found in archive" }
+                Copy-Item -Path $exe.FullName -Destination $Path -Force
+            } -ArgumentList @($url, $zip, $tmp, $path) | Out-Null
         } catch {
             Write-Error "Failed to download helm: $_"
             exit 1
         } finally {
             Remove-Item $zip -Force -ErrorAction SilentlyContinue
-            Remove-Item (Join-Path $script:ToolsDir "helm-tmp") -Recurse -Force -ErrorAction SilentlyContinue
+            Remove-Item $tmp -Recurse -Force -ErrorAction SilentlyContinue
         }
     }
 
     $v = & $path version --short 2>&1
+    [Console]::Write("`r" + (" " * 80) + "`r")
     Write-Host "  ✓ helm: $($v.ToString().Trim())" -ForegroundColor Green
 }
 
@@ -151,30 +159,34 @@ function Install-Helm {
 #>
 function Install-RancherCli {
     $path = Join-Path $script:ToolsDir "rancher.exe"
+    [Console]::Write("`r  | rancher: Checking...")
 
     if (-not (Test-Path $path)) {
         $version = "v2.14.2"
         $zip = Join-Path $script:ToolsDir "rancher-cli.zip"
         $url = "https://github.com/rancher/cli/releases/download/$version/rancher-windows-amd64-$version.zip"
+        $tmp = Join-Path $script:ToolsDir "rancher-cli-tmp"
 
-        Write-Host "  Downloading rancher CLI $version..." -ForegroundColor Cyan
         try {
-            Invoke-WebRequest -Uri $url -OutFile $zip -UseBasicParsing
-            $tmp = Join-Path $script:ToolsDir "rancher-cli-tmp"
-            Expand-Archive -Path $zip -DestinationPath $tmp -Force
-            $exe = Get-ChildItem -Path $tmp -Recurse -Filter "rancher.exe" | Select-Object -First 1
-            if (-not $exe) { throw "rancher.exe not found in archive" }
-            Copy-Item -Path $exe.FullName -Destination $path -Force
+            Invoke-ScriptBlockWithSpinner -Message "rancher: Downloading $version..." -ScriptBlock {
+                param($Url, $Zip, $Tmp, $Path)
+                Invoke-WebRequest -Uri $Url -OutFile $Zip -UseBasicParsing
+                Expand-Archive -Path $Zip -DestinationPath $Tmp -Force
+                $exe = Get-ChildItem -Path $Tmp -Recurse -Filter "rancher.exe" | Select-Object -First 1
+                if (-not $exe) { throw "rancher.exe not found in archive" }
+                Copy-Item -Path $exe.FullName -Destination $Path -Force
+            } -ArgumentList @($url, $zip, $tmp, $path) | Out-Null
         } catch {
             Write-Error "Failed to download rancher CLI: $_"
             exit 1
         } finally {
             Remove-Item $zip -Force -ErrorAction SilentlyContinue
-            Remove-Item (Join-Path $script:ToolsDir "rancher-cli-tmp") -Recurse -Force -ErrorAction SilentlyContinue
+            Remove-Item $tmp -Recurse -Force -ErrorAction SilentlyContinue
         }
     }
 
     $v = & $path --version 2>&1
+    [Console]::Write("`r" + (" " * 80) + "`r")
     Write-Host "  ✓ rancher: $($v.ToString().Trim())" -ForegroundColor Green
 }
 
@@ -206,11 +218,19 @@ function Install-PlatformTools {
                 if ((Test-Path $p) -and $env:Path -notlike "*$p*") { $env:Path = "$p;$env:Path" }
             }
 
+            [Console]::Write("`r  | az: Checking...")
             if (-not (Test-CommandExists "az")) {
-                Write-Host "  Downloading Azure CLI..." -ForegroundColor Cyan
                 $msi = Join-Path $env:TEMP "AzureCLI.msi"
                 $log = Join-Path $env:TEMP "AzureCLI_Install.log"
-                Invoke-WebRequest -Uri "https://aka.ms/installazurecliwindows" -OutFile $msi -UseBasicParsing
+                try {
+                    Invoke-ScriptBlockWithSpinner -Message "az: Downloading Azure CLI..." -ScriptBlock {
+                        param($Url, $OutFile)
+                        Invoke-WebRequest -Uri $Url -OutFile $OutFile -UseBasicParsing
+                    } -ArgumentList @("https://aka.ms/installazurecliwindows", $msi) | Out-Null
+                } catch {
+                    Write-Error "Failed to download Azure CLI: $_"; exit 1
+                }
+                [Console]::Write("`r  | az: Installing (UAC prompt may appear)...")
                 $proc = Start-Process msiexec.exe -Wait -PassThru -Verb RunAs -ArgumentList "/i `"$msi`" /qn /L*v `"$log`""
                 Remove-Item $msi -Force -ErrorAction SilentlyContinue
                 if ($proc.ExitCode -ne 0) { Write-Error "Azure CLI install failed (code $($proc.ExitCode)). Log: $log"; exit 1 }
@@ -219,6 +239,7 @@ function Install-PlatformTools {
                 }
             }
             $v = & az version 2>&1 | ConvertFrom-Json
+            [Console]::Write("`r" + (" " * 80) + "`r")
             Write-Host "  ✓ az: $($v.'azure-cli')" -ForegroundColor Green
         }
 
@@ -227,11 +248,19 @@ function Install-PlatformTools {
                 if ((Test-Path $p) -and $env:Path -notlike "*$p*") { $env:Path = "$p;$env:Path" }
             }
 
+            [Console]::Write("`r  | aws: Checking...")
             if (-not (Test-CommandExists "aws")) {
-                Write-Host "  Downloading AWS CLI..." -ForegroundColor Cyan
                 $msi = Join-Path $env:TEMP "AWSCLIV2.msi"
                 $log = Join-Path $env:TEMP "AWSCLI_Install.log"
-                Invoke-WebRequest -Uri "https://awscli.amazonaws.com/AWSCLIV2.msi" -OutFile $msi -UseBasicParsing
+                try {
+                    Invoke-ScriptBlockWithSpinner -Message "aws: Downloading AWS CLI..." -ScriptBlock {
+                        param($Url, $OutFile)
+                        Invoke-WebRequest -Uri $Url -OutFile $OutFile -UseBasicParsing
+                    } -ArgumentList @("https://awscli.amazonaws.com/AWSCLIV2.msi", $msi) | Out-Null
+                } catch {
+                    Write-Error "Failed to download AWS CLI: $_"; exit 1
+                }
+                [Console]::Write("`r  | aws: Installing (UAC prompt may appear)...")
                 $proc = Start-Process msiexec.exe -Wait -PassThru -Verb RunAs -ArgumentList "/i `"$msi`" /qn /L*v `"$log`""
                 Remove-Item $msi -Force -ErrorAction SilentlyContinue
                 if ($proc.ExitCode -ne 0) { Write-Error "AWS CLI install failed (code $($proc.ExitCode)). Log: $log"; exit 1 }
@@ -240,35 +269,48 @@ function Install-PlatformTools {
                 }
             }
             $v = & aws --version 2>&1
+            [Console]::Write("`r" + (" " * 80) + "`r")
             Write-Host "  ✓ aws: $($v.ToString().Trim())" -ForegroundColor Green
 
             $eksctlPath = Join-Path $script:ToolsDir "eksctl.exe"
+            [Console]::Write("`r  | eksctl: Checking...")
             if (-not (Test-Path $eksctlPath)) {
-                Write-Host "  Downloading eksctl..." -ForegroundColor Cyan
                 $zip = Join-Path $env:TEMP "eksctl.zip"
+                $tmp = Join-Path $env:TEMP "eksctl-tmp"
                 try {
-                    Invoke-WebRequest -Uri "https://github.com/eksctl-io/eksctl/releases/latest/download/eksctl_Windows_amd64.zip" -OutFile $zip -UseBasicParsing
-                    $tmp = Join-Path $env:TEMP "eksctl-tmp"
-                    Expand-Archive -Path $zip -DestinationPath $tmp -Force
-                    $exe = Get-ChildItem -Path $tmp -Recurse -Filter "eksctl.exe" | Select-Object -First 1
-                    if (-not $exe) { throw "eksctl.exe not found in archive" }
-                    Copy-Item -Path $exe.FullName -Destination $eksctlPath -Force
+                    Invoke-ScriptBlockWithSpinner -Message "eksctl: Downloading..." -ScriptBlock {
+                        param($Url, $Zip, $Tmp, $Path)
+                        Invoke-WebRequest -Uri $Url -OutFile $Zip -UseBasicParsing
+                        Expand-Archive -Path $Zip -DestinationPath $Tmp -Force
+                        $exe = Get-ChildItem -Path $Tmp -Recurse -Filter "eksctl.exe" | Select-Object -First 1
+                        if (-not $exe) { throw "eksctl.exe not found in archive" }
+                        Copy-Item -Path $exe.FullName -Destination $Path -Force
+                    } -ArgumentList @("https://github.com/eksctl-io/eksctl/releases/latest/download/eksctl_Windows_amd64.zip", $zip, $tmp, $eksctlPath) | Out-Null
                 } catch {
                     Write-Error "Failed to download eksctl: $_"; exit 1
                 } finally {
                     Remove-Item $zip -Force -ErrorAction SilentlyContinue
-                    Remove-Item (Join-Path $env:TEMP "eksctl-tmp") -Recurse -Force -ErrorAction SilentlyContinue
+                    Remove-Item $tmp -Recurse -Force -ErrorAction SilentlyContinue
                 }
             }
             $v = & $eksctlPath version 2>&1
+            [Console]::Write("`r" + (" " * 80) + "`r")
             Write-Host "  ✓ eksctl: $($v.ToString().Trim())" -ForegroundColor Green
         }
 
         "Google GKE" {
+            [Console]::Write("`r  | gcloud: Checking...")
             if (-not (Test-CommandExists "gcloud")) {
-                Write-Host "  Downloading Google Cloud SDK..." -ForegroundColor Cyan
                 $exe = Join-Path $env:TEMP "gcloud-installer.exe"
-                Invoke-WebRequest -Uri "https://dl.google.com/dl/cloudsdk/channels/rapid/GoogleCloudSDKInstaller.exe" -OutFile $exe -UseBasicParsing
+                try {
+                    Invoke-ScriptBlockWithSpinner -Message "gcloud: Downloading Google Cloud SDK..." -ScriptBlock {
+                        param($Url, $OutFile)
+                        Invoke-WebRequest -Uri $Url -OutFile $OutFile -UseBasicParsing
+                    } -ArgumentList @("https://dl.google.com/dl/cloudsdk/channels/rapid/GoogleCloudSDKInstaller.exe", $exe) | Out-Null
+                } catch {
+                    Write-Error "Failed to download Google Cloud SDK: $_"; exit 1
+                }
+                [Console]::Write("`r  | gcloud: Installing...")
                 $proc = Start-Process -FilePath $exe -Wait -PassThru -ArgumentList "/S" -NoNewWindow
                 Remove-Item $exe -Force -ErrorAction SilentlyContinue
                 if ($proc.ExitCode -ne 0) { Write-Error "Google Cloud SDK install failed (code $($proc.ExitCode))"; exit 1 }
@@ -277,9 +319,11 @@ function Install-PlatformTools {
                 }
             }
             $v = & gcloud version 2>&1 | Select-String "Google Cloud SDK" | Select-Object -First 1
+            [Console]::Write("`r" + (" " * 80) + "`r")
             Write-Host "  ✓ gcloud: $($v.ToString().Trim())" -ForegroundColor Green
 
             # Check PATH first, then the gcloud bin directory directly
+            [Console]::Write("`r  | gke-gcloud-auth-plugin: Checking...")
             $pluginCmd = Get-Command "gke-gcloud-auth-plugin" -ErrorAction SilentlyContinue
             if (-not $pluginCmd) {
                 $gcloudExe = (Get-Command "gcloud" -ErrorAction SilentlyContinue).Source
@@ -287,7 +331,8 @@ function Install-PlatformTools {
                 $pluginExe = if ($gcloudBin) { Join-Path $gcloudBin "gke-gcloud-auth-plugin.exe" } else { $null }
                 if ($pluginExe -and (Test-Path $pluginExe)) {
                     if ($env:PATH -notlike "*$gcloudBin*") { $env:PATH = "$gcloudBin;$env:PATH" }
-                    Write-Host "  ✓ gke-gcloud-auth-plugin found in gcloud bin" -ForegroundColor Green
+                    [Console]::Write("`r" + (" " * 80) + "`r")
+                    Write-Host "  ✓ gke-gcloud-auth-plugin: found in gcloud bin" -ForegroundColor Green
                 } else {
                     # gcloud blocks bundled Python in non-interactive mode (Start-Job counts as non-interactive).
                     # Fix: copy-bundled-python returns a standalone Python path we can pass as CLOUDSDK_PYTHON
@@ -301,48 +346,61 @@ function Install-PlatformTools {
                     if ($copiedPython -and (Test-Path "$copiedPython")) {
                         $extraEnv["CLOUDSDK_PYTHON"] = "$copiedPython"
                     }
-                    $exitCode = Invoke-WithSpinner -Message "Installing gke-gcloud-auth-plugin..." `
+                    $exitCode = Invoke-WithSpinner -Message "gke-gcloud-auth-plugin: Installing..." `
                         -Executable "gcloud" -Arguments @("components", "install", "gke-gcloud-auth-plugin", "--quiet") `
                         -EnvVars $extraEnv
+                    [Console]::Write("`r" + (" " * 80) + "`r")
                     if ($exitCode -eq 0) {
                         if ($gcloudBin -and $env:PATH -notlike "*$gcloudBin*") { $env:PATH = "$gcloudBin;$env:PATH" }
-                        Write-Host "  ✓ gke-gcloud-auth-plugin installed" -ForegroundColor Green
+                        Write-Host "  ✓ gke-gcloud-auth-plugin: installed" -ForegroundColor Green
                     } else {
-                        Write-Host "  ⚠ Could not auto-install gke-gcloud-auth-plugin" -ForegroundColor Yellow
+                        Write-Host "  ⚠ gke-gcloud-auth-plugin: could not auto-install" -ForegroundColor Yellow
                         Write-Host "    Run manually: gcloud components install gke-gcloud-auth-plugin" -ForegroundColor Yellow
                     }
                 }
+            } else {
+                [Console]::Write("`r" + (" " * 80) + "`r")
+                Write-Host "  ✓ gke-gcloud-auth-plugin: available" -ForegroundColor Green
             }
         }
 
         "Kind (Local)" {
             $path = Join-Path $script:ToolsDir "kind.exe"
+            [Console]::Write("`r  | kind: Checking...")
             if (-not (Test-Path $path)) {
-                Write-Host "  Downloading kind..." -ForegroundColor Cyan
                 $url = "https://github.com/kubernetes-sigs/kind/releases/download/v0.20.0/kind-windows-amd64"
                 try {
-                    Invoke-WebRequest -Uri $url -OutFile $path -UseBasicParsing
+                    Invoke-ScriptBlockWithSpinner -Message "kind: Downloading..." -ScriptBlock {
+                        param($Url, $OutFile)
+                        Invoke-WebRequest -Uri $Url -OutFile $OutFile -UseBasicParsing
+                    } -ArgumentList @($url, $path) | Out-Null
                 } catch {
                     Write-Error "Failed to download kind: $_"
                     exit 1
                 }
             }
             $v = & $path version 2>&1
+            [Console]::Write("`r" + (" " * 80) + "`r")
             Write-Host "  ✓ kind: $($v.ToString().Trim())" -ForegroundColor Green
         }
 
         "RKE2 (On-Premise)" {
             $plinkPath = Join-Path $script:ToolsDir "plink.exe"
+            [Console]::Write("`r  | plink: Checking...")
             if (-not (Test-Path $plinkPath) -and -not (Get-Command "plink.exe" -ErrorAction SilentlyContinue)) {
-                Write-Host "  Downloading plink.exe (PuTTY)..." -ForegroundColor Cyan
                 try {
-                    Invoke-WebRequest -Uri "https://the.earth.li/~sgtatham/putty/latest/w64/plink.exe" `
-                        -OutFile $plinkPath -UseBasicParsing
-                    Write-Host "  ✓ plink.exe downloaded" -ForegroundColor Green
+                    Invoke-ScriptBlockWithSpinner -Message "plink: Downloading (PuTTY)..." -ScriptBlock {
+                        param($Url, $OutFile)
+                        Invoke-WebRequest -Uri $Url -OutFile $OutFile -UseBasicParsing
+                    } -ArgumentList @("https://the.earth.li/~sgtatham/putty/latest/w64/plink.exe", $plinkPath) | Out-Null
+                    [Console]::Write("`r" + (" " * 80) + "`r")
+                    Write-Host "  ✓ plink: downloaded" -ForegroundColor Green
                 } catch {
+                    [Console]::Write("`r" + (" " * 80) + "`r")
                     Write-Warning "  ⚠ Could not download plink.exe — password SSH will not be available"
                 }
             } else {
+                [Console]::Write("`r" + (" " * 80) + "`r")
                 Write-Host "  ✓ plink: available" -ForegroundColor Green
             }
             if ((Test-Path $plinkPath) -and $env:PATH -notlike "*$script:ToolsDir*") {
