@@ -1139,9 +1139,9 @@ function Initialize-Rke2Cluster {
         $kubeconfigDir = Split-Path $KubeconfigPath -Parent
         if (-not (Test-Path $kubeconfigDir)) { New-Item -ItemType Directory -Path $kubeconfigDir -Force | Out-Null }
         Set-Content -Path $KubeconfigPath -Value $patchedConfig -Encoding UTF8
-        Write-Host "  ✓ Kubeconfig saved to $KubeconfigPath" -ForegroundColor Green
+        Write-Host "  ✓ Kubeconfig saved" -ForegroundColor Green
     } elseif (Test-Path $KubeconfigPath) {
-        Write-Host "  ✓ Using existing kubeconfig: $KubeconfigPath" -ForegroundColor Green
+        Write-Host "  ✓ Using existing kubeconfig" -ForegroundColor Green
     } else {
         Write-Error "Kubeconfig not found at '$KubeconfigPath'. Copy it from your RKE2 server:  scp user@<node1>:/etc/rancher/rke2/rke2.yaml $KubeconfigPath"
         exit 1
