@@ -1148,7 +1148,6 @@ function Initialize-Rke2Cluster {
     }
 
     $env:KUBECONFIG = $KubeconfigPath
-    Write-Host "  Using kubeconfig: $KubeconfigPath" -ForegroundColor Gray
 
     $nodesRef = [ref]$null
     $exitCode = Invoke-WithSpinner -Message "Verifying cluster connectivity..." `
