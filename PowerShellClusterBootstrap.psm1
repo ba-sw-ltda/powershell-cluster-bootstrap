@@ -1104,6 +1104,8 @@ function Initialize-Rke2Cluster {
             # Pre-run: accept and cache the host key
             $exitCode = Invoke-WithSpinner -Message "Caching SSH host key for $SshServer..." `
                 -Executable "plink.exe" -Arguments @("-ssh", "-pw", $SshPassword, "$SshUser@$SshServer", "exit")
+            if ($exitCode -ne 0) { Write-Error "Failed to cache SSH host key for $SshServer"; exit 1 }
+            Write-Host "  ✓ SSH host key cached" -ForegroundColor Green
             # Fetch kubeconfig (key is now cached, -batch safe)
             $rawRef = [ref]$null
             $exitCode = Invoke-WithSpinner -Message "Fetching kubeconfig from $SshUser@$SshServer..." `
