@@ -551,21 +551,19 @@ function Reset-StuckHelmRelease {
 function Confirm-KubectlContext {
     param([string]$ExpectedContext)
 
-    $current = & kubectl config current-context 2>&1
-    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($current)) {
-        Write-Error "kubectl has no active context after get-credentials — kubeconfig may not have been updated"
-        exit 1
-    }
+    do {
+        $current = & kubectl config current-context 2>&1
+        $ok = $LASTEXITCODE -eq 0 -and -not [string]::IsNullOrWhiteSpace($current)
+    } while (-not $ok -and (Confirm-RetryOrExit -Reason "kubectl has no active context after get-credentials — kubeconfig may not have been updated"))
 
     if ($current.Trim() -ne $ExpectedContext) {
         Write-Warning "  ⚠ kubectl context is '$($current.Trim())' but expected '$ExpectedContext'"
         Write-Warning "    Run: kubectl config use-context $ExpectedContext"
-        & kubectl config use-context $ExpectedContext 2>&1 | Out-Null
-        $current = & kubectl config current-context 2>&1
-        if ($current.Trim() -ne $ExpectedContext) {
-            Write-Error "Failed to switch kubectl context to '$ExpectedContext'"
-            exit 1
-        }
+        do {
+            & kubectl config use-context $ExpectedContext 2>&1 | Out-Null
+            $current = & kubectl config current-context 2>&1
+            $ok = $current.Trim() -eq $ExpectedContext
+        } while (-not $ok -and (Confirm-RetryOrExit -Reason "Failed to switch kubectl context to '$ExpectedContext'"))
     }
 
     Write-Host "  ✓ kubectl context: $($current.Trim())" -ForegroundColor Green
@@ -722,13 +720,14 @@ function Initialize-AksCluster {
 
     & az account show 2>&1 | Out-Null
     if ($LASTEXITCODE -ne 0) {
-        Write-Host ""
-        Write-Host "  Azure login required. Open the following URL in your browser:" -ForegroundColor Cyan
-        Write-Host "    https://microsoft.com/devicelogin" -ForegroundColor Yellow
-        Write-Host "  Then enter the code shown below." -ForegroundColor Cyan
-        Write-Host ""
-        & az login --use-device-code
-        if ($LASTEXITCODE -ne 0) { Write-Error "Azure login failed"; exit 1 }
+        do {
+            Write-Host ""
+            Write-Host "  Azure login required. Open the following URL in your browser:" -ForegroundColor Cyan
+            Write-Host "    https://microsoft.com/devicelogin" -ForegroundColor Yellow
+            Write-Host "  Then enter the code shown below." -ForegroundColor Cyan
+            Write-Host ""
+            & az login --use-device-code
+        } while ($LASTEXITCODE -ne 0 -and (Confirm-RetryOrExit -Reason "Azure login failed"))
     }
 
     $exitCode = Invoke-WithSpinner -Message "Setting subscription '$SubscriptionId'..." -Executable "az" `
@@ -829,10 +828,11 @@ function Initialize-EksCluster {
             exit 1
         }
         Write-Host "  Configuring AWS credentials..." -ForegroundColor Cyan
-        & aws configure set aws_access_key_id $AccessKeyId 2>&1 | Out-Null
-        & aws configure set aws_secret_access_key $SecretAccessKey 2>&1 | Out-Null
-        & aws sts get-caller-identity 2>&1 | Out-Null
-        if ($LASTEXITCODE -ne 0) { Write-Error "AWS authentication failed — check Access Key ID and Secret"; exit 1 }
+        do {
+            & aws configure set aws_access_key_id $AccessKeyId 2>&1 | Out-Null
+            & aws configure set aws_secret_access_key $SecretAccessKey 2>&1 | Out-Null
+            & aws sts get-caller-identity 2>&1 | Out-Null
+        } while ($LASTEXITCODE -ne 0 -and (Confirm-RetryOrExit -Reason "AWS authentication failed — check Access Key ID and Secret"))
     }
     Write-Host "  ✓ AWS authenticated" -ForegroundColor Green
 
@@ -922,12 +922,13 @@ function Initialize-GkeCluster {
     $accountRaw = & gcloud config get-value account 2>&1
     $account = if ($accountRaw -is [System.Management.Automation.ErrorRecord]) { "" } else { "$accountRaw".Trim() }
     if ($account -eq "(unset)" -or [string]::IsNullOrWhiteSpace($account)) {
-        Write-Host ""
-        Write-Host "  Google Cloud login required." -ForegroundColor Cyan
-        Write-Host "  Open the URL that appears below in your browser." -ForegroundColor Cyan
-        Write-Host ""
-        & gcloud auth login --no-launch-browser
-        if ($LASTEXITCODE -ne 0) { Write-Error "Google Cloud login failed"; exit 1 }
+        do {
+            Write-Host ""
+            Write-Host "  Google Cloud login required." -ForegroundColor Cyan
+            Write-Host "  Open the URL that appears below in your browser." -ForegroundColor Cyan
+            Write-Host ""
+            & gcloud auth login --no-launch-browser
+        } while ($LASTEXITCODE -ne 0 -and (Confirm-RetryOrExit -Reason "Google Cloud login failed"))
     }
     Write-Host "  ✓ Google Cloud authenticated" -ForegroundColor Green
 
@@ -1102,16 +1103,19 @@ function Initialize-Rke2Cluster {
                 exit 1
             }
             # Pre-run: accept and cache the host key
-            $exitCode = Invoke-WithSpinner -Message "Caching SSH host key for $SshServer..." `
-                -Executable "plink.exe" -Arguments @("-ssh", "-pw", $SshPassword, "$SshUser@$SshServer", "exit")
-            if ($exitCode -ne 0) { Write-Error "Failed to cache SSH host key for $SshServer"; exit 1 }
+            do {
+                $exitCode = Invoke-WithSpinner -Message "Caching SSH host key for $SshServer..." `
+                    -Executable "plink.exe" -Arguments @("-ssh", "-pw", $SshPassword, "$SshUser@$SshServer", "exit")
+            } while ($exitCode -ne 0 -and (Confirm-RetryOrExit -Reason "Failed to cache SSH host key for $SshServer"))
             Write-Host "  ✓ SSH host key cached" -ForegroundColor Green
             # Fetch kubeconfig (key is now cached, -batch safe)
-            $rawRef = [ref]$null
-            $exitCode = Invoke-WithSpinner -Message "Fetching kubeconfig from $SshUser@$SshServer..." `
-                -Executable "plink.exe" -Arguments @("-ssh", "-batch", "-pw", $SshPassword, "$SshUser@$SshServer", "cat /etc/rancher/rke2/rke2.yaml") `
-                -OutputVariable $rawRef
-            $rawConfig = $rawRef.Value
+            do {
+                $rawRef = [ref]$null
+                $exitCode = Invoke-WithSpinner -Message "Fetching kubeconfig from $SshUser@$SshServer..." `
+                    -Executable "plink.exe" -Arguments @("-ssh", "-batch", "-pw", $SshPassword, "$SshUser@$SshServer", "cat /etc/rancher/rke2/rke2.yaml") `
+                    -OutputVariable $rawRef
+                $rawConfig = $rawRef.Value
+            } while ($exitCode -ne 0 -and (Confirm-RetryOrExit -Reason "SSH failed — check credentials and server address"))
         } else {
             $sshArgs = @("-o", "StrictHostKeyChecking=no", "-o", "BatchMode=yes")
             if (-not [string]::IsNullOrWhiteSpace($SshKeyPath)) {
@@ -1119,13 +1123,13 @@ function Initialize-Rke2Cluster {
                 $sshArgs += @("-i", $SshKeyPath)
             }
             $sshArgs += @("$SshUser@$SshServer", "cat /etc/rancher/rke2/rke2.yaml")
-            $rawRef   = [ref]$null
-            $exitCode = Invoke-WithSpinner -Message "Fetching kubeconfig from $SshUser@$SshServer..." `
-                -Executable "ssh.exe" -Arguments $sshArgs -OutputVariable $rawRef
-            $rawConfig = $rawRef.Value
+            do {
+                $rawRef   = [ref]$null
+                $exitCode = Invoke-WithSpinner -Message "Fetching kubeconfig from $SshUser@$SshServer..." `
+                    -Executable "ssh.exe" -Arguments $sshArgs -OutputVariable $rawRef
+                $rawConfig = $rawRef.Value
+            } while ($exitCode -ne 0 -and (Confirm-RetryOrExit -Reason "SSH failed — check credentials and server address"))
         }
-
-        if ($exitCode -ne 0) { Write-Error "SSH failed — check credentials and server address"; exit 1 }
 
         # Strip any plink/ssh status lines (stderr mixed in via 2>&1) — keep only the YAML part
         $yamlLines  = @($rawConfig) | ForEach-Object { "$_" }
@@ -1151,13 +1155,11 @@ function Initialize-Rke2Cluster {
 
     $env:KUBECONFIG = $KubeconfigPath
 
-    $nodesRef = [ref]$null
-    $exitCode = Invoke-WithSpinner -Message "Verifying cluster connectivity..." `
-        -Executable "kubectl" -Arguments @("get", "nodes", "--no-headers") -OutputVariable $nodesRef
-    if ($exitCode -ne 0) {
-        Write-Error "Cannot reach cluster. Check kubeconfig and that the cluster is running."
-        exit 1
-    }
+    do {
+        $nodesRef = [ref]$null
+        $exitCode = Invoke-WithSpinner -Message "Verifying cluster connectivity..." `
+            -Executable "kubectl" -Arguments @("get", "nodes", "--no-headers") -OutputVariable $nodesRef
+    } while ($exitCode -ne 0 -and (Confirm-RetryOrExit -Reason "Cannot reach cluster. Check kubeconfig and that the cluster is running."))
     $nodeCount = ($nodesRef.Value | Measure-Object).Count
     Write-Host "  ✓ Connected — $nodeCount node(s) ready" -ForegroundColor Green
 }
