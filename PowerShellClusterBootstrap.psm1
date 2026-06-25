@@ -691,6 +691,49 @@ function Get-IngressClass {
 
 <#
 .SYNOPSIS
+    Checks whether Authelia is deployed in the cluster.
+.OUTPUTS
+    $true if a Deployment named "authelia" exists in the "authelia" namespace.
+#>
+function Test-AutheliaInstalled {
+    & kubectl get deployment authelia -n authelia --ignore-not-found 2>$null | Out-Null
+    return $LASTEXITCODE -eq 0 -and $?
+}
+
+<#
+.SYNOPSIS
+    Finds every Ingress still protected by the Basic-Auth fallback (stamped by
+    Protect-ComponentIngress with a "baseline.io/vault-path" annotation when
+    Authelia wasn't installed yet).
+.DESCRIPTION
+    Used by Authelia's own installer to migrate pre-existing Basic-Auth
+    components over to forward-auth — independent of install ordering, and
+    covers components set up in a previous, separate installer run.
+.OUTPUTS
+    Array of hashtables: @{ Name; Namespace; Hostname; VaultPath }
+#>
+function Get-BasicAuthIngresses {
+    $json = & kubectl get ingress -A -o json 2>$null
+    if (-not $json) { return @() }
+    $ingresses = ($json | ConvertFrom-Json -AsHashtable)['items']
+
+    $results = [System.Collections.Generic.List[hashtable]]::new()
+    foreach ($ing in $ingresses) {
+        $vaultPath = $ing['metadata']['annotations']['baseline.io/vault-path']
+        if (-not $vaultPath) { continue }
+        $hostname = $ing['spec']['rules'][0]['host']
+        $results.Add(@{
+            Name      = $ing['metadata']['name']
+            Namespace = $ing['metadata']['namespace']
+            Hostname  = $hostname
+            VaultPath = $vaultPath
+        }) | Out-Null
+    }
+    return $results.ToArray()
+}
+
+<#
+.SYNOPSIS
     Creates or connects to an Azure AKS cluster and writes its kubeconfig.
 .DESCRIPTION
     Logs into Azure via device code if not already authenticated, creates
@@ -743,7 +786,7 @@ function Initialize-AksCluster {
             -Arguments @("aks", "get-credentials", "--resource-group", $ResourceGroup, "--name", $ClusterName, "--overwrite-existing", "--file", $kubefile)
         if ($exitCode -ne 0) { Write-Error "Failed to get credentials for '$ClusterName'"; exit 1 }
         Confirm-KubectlContext -ExpectedContext $ClusterName
-        return
+        return $true
     }
 
     if ($ReplaceCluster) {
@@ -845,7 +888,7 @@ function Initialize-EksCluster {
         if ($exitCode -ne 0) { Write-Error "Failed to get credentials for '$ClusterName'"; exit 1 }
         $ctx = (& kubectl config current-context 2>&1).Trim()
         Write-Host "  ✓ kubectl context: $ctx" -ForegroundColor Green
-        return
+        return $true
     }
 
     $eksctlPath = Join-Path $script:ToolsDir "eksctl.exe"
@@ -891,6 +934,7 @@ function Initialize-EksCluster {
     if ($exitCode -ne 0) { Write-Error "Failed to get credentials for '$ClusterName'"; exit 1 }
     $ctx = (& kubectl config current-context 2>&1).Trim()
     Write-Host "  ✓ kubectl context: $ctx" -ForegroundColor Green
+    return $true
 }
 
 <#
@@ -945,7 +989,7 @@ function Initialize-GkeCluster {
         if ($exitCode -ne 0) { Write-Error "Failed to get credentials for '$ClusterName'"; exit 1 }
         $ctx = (& kubectl config current-context 2>&1).Trim()
         Write-Host "  ✓ kubectl context: $ctx" -ForegroundColor Green
-        return
+        return $true
     }
 
     if ($ReplaceCluster) {
@@ -991,6 +1035,7 @@ function Initialize-GkeCluster {
 
     $ctx = (& kubectl config current-context 2>&1).Trim()
     Write-Host "  ✓ kubectl context: $ctx" -ForegroundColor Green
+    return $true
 }
 
 <#
@@ -1055,6 +1100,7 @@ nodes:
     & $kindExe export kubeconfig --name $ClusterName --kubeconfig $kubefile 2>&1 | Out-Null
     $env:KUBECONFIG = $kubefile
     Write-Host "  ✓ kubectl context set to kind-$ClusterName" -ForegroundColor Green
+    return $true
 }
 
 <#
@@ -1162,6 +1208,7 @@ function Initialize-Rke2Cluster {
     } while ($exitCode -ne 0 -and (Confirm-RetryOrExit -Reason "Cannot reach cluster. Check kubeconfig and that the cluster is running."))
     $nodeCount = ($nodesRef.Value | Measure-Object).Count
     Write-Host "  ✓ Connected — $nodeCount node(s) ready" -ForegroundColor Green
+    return $true
 }
 
 <#
@@ -1228,28 +1275,28 @@ function Initialize-ClusterEnvironment {
                 -SubscriptionId $AksSubscriptionId -ResourceGroup $AksResourceGroup `
                 -Location $AksLocation -ClusterName $AksClusterName `
                 -NodeCount $AksNodeCount -VmSize $AksVmSize `
-                -ReplaceCluster $AksReplaceCluster -UseExisting $AksUseExisting
+                -ReplaceCluster $AksReplaceCluster -UseExisting $AksUseExisting | Out-Null
         }
         "AWS EKS" {
             Initialize-EksCluster `
                 -AccessKeyId $EksAccessKeyId -SecretAccessKey $EksSecretAccessKey `
                 -Region $EksRegion -ClusterName $EksClusterName `
                 -NodeCount $EksNodeCount -NodeType $EksNodeType `
-                -ReplaceCluster $EksReplaceCluster -UseExisting $EksUseExisting
+                -ReplaceCluster $EksReplaceCluster -UseExisting $EksUseExisting | Out-Null
         }
         "Google GKE" {
             Initialize-GkeCluster `
                 -ProjectId $GkeProjectId -Zone $GkeZone -ClusterName $GkeClusterName `
                 -NodeCount $GkeNodeCount -MachineType $GkeMachineType `
-                -ReplaceCluster $GkeReplaceCluster -UseExisting $GkeUseExisting
+                -ReplaceCluster $GkeReplaceCluster -UseExisting $GkeUseExisting | Out-Null
         }
         "RKE2 (On-Premise)" {
             Initialize-Rke2Cluster -KubeconfigPath $Rke2KubeconfigPath `
                 -SshServer $Rke2SshServer -SshUser $Rke2SshUser `
-                -SshKeyPath $Rke2SshKeyPath -SshPassword $Rke2SshPassword
+                -SshKeyPath $Rke2SshKeyPath -SshPassword $Rke2SshPassword | Out-Null
         }
         "Kind (Local)" {
-            Initialize-KindCluster -ClusterName $KindClusterName -ReplaceCluster $KindReplaceCluster
+            Initialize-KindCluster -ClusterName $KindClusterName -ReplaceCluster $KindReplaceCluster | Out-Null
         }
     }
 }
@@ -1505,6 +1552,95 @@ function Write-GcpSecretManagerSecret {
 
 <#
 .SYNOPSIS
+    Deletes a secret previously written by Write-AzureKeyVaultSecret.
+.DESCRIPTION
+    Soft-delete — Azure Key Vault has soft-delete protection on by default
+    and it cannot be turned off, so this is never an unrecoverable purge.
+.PARAMETER Keys
+    Same -Keys list that was passed to Write-AzureKeyVaultSecret, so the same
+    secret name(s) get targeted ("$Path" if one key, "$Path-$key" per key
+    otherwise).
+.OUTPUTS
+    $true on success, $false if the state file/vault is missing or any
+    delete failed.
+#>
+function Remove-AzureKeyVaultSecret {
+    param([string]$Path, [string[]]$Keys, [string]$BaseDir)
+
+    $stateFile = Join-Path $BaseDir ".aks-state.json"
+    if (-not (Test-Path $stateFile)) { return $false }
+
+    $vaultName = (Get-Content $stateFile | ConvertFrom-Json).VaultName
+    if (-not $vaultName) { return $false }
+
+    foreach ($key in $Keys) {
+        $secretName = if ($Keys.Count -eq 1) { $Path } else { "$Path-$key" }
+        & az keyvault secret delete --vault-name $vaultName --name $secretName 2>$null | Out-Null
+        if ($LASTEXITCODE -ne 0) { return $false }
+    }
+    return $true
+}
+
+<#
+.SYNOPSIS
+    Deletes a secret previously written by Write-AwsSecretsManagerSecret.
+.DESCRIPTION
+    Schedules deletion with AWS's default recovery window (no
+    --force-delete-without-recovery) — recoverable, not an immediate purge.
+.PARAMETER Keys
+    Same -Keys list that was passed to Write-AwsSecretsManagerSecret.
+.OUTPUTS
+    $true on success, $false if the state file/region is missing or any
+    delete failed.
+#>
+function Remove-AwsSecretsManagerSecret {
+    param([string]$Path, [string[]]$Keys, [string]$BaseDir)
+
+    $stateFile = Join-Path $BaseDir ".eks-state.json"
+    if (-not (Test-Path $stateFile)) { return $false }
+
+    $region = (Get-Content $stateFile | ConvertFrom-Json).Region
+    if (-not $region) { return $false }
+
+    foreach ($key in $Keys) {
+        $secretName = if ($Keys.Count -eq 1) { $Path } else { "$Path-$key" }
+        & aws secretsmanager delete-secret --secret-id $secretName --region $region 2>$null | Out-Null
+        if ($LASTEXITCODE -ne 0) { return $false }
+    }
+    return $true
+}
+
+<#
+.SYNOPSIS
+    Deletes a secret previously written by Write-GcpSecretManagerSecret.
+.DESCRIPTION
+    GCP Secret Manager has no soft-delete/undelete concept — this is an
+    immediate, unrecoverable delete of the secret and all its versions.
+.PARAMETER Keys
+    Same -Keys list that was passed to Write-GcpSecretManagerSecret.
+.OUTPUTS
+    $true on success, $false if the state file/project ID is missing or any
+    delete failed.
+#>
+function Remove-GcpSecretManagerSecret {
+    param([string]$Path, [string[]]$Keys, [string]$BaseDir)
+
+    $stateFile = Join-Path $BaseDir ".gke-state.json"
+    if (-not (Test-Path $stateFile)) { return $false }
+
+    $projectId = (Get-Content $stateFile | ConvertFrom-Json).ProjectId
+    if (-not $projectId) { return $false }
+
+    foreach ($key in $Keys) {
+        $secretName = if ($Keys.Count -eq 1) { $Path } else { "$Path-$key" }
+        & gcloud secrets delete $secretName --project $projectId --quiet 2>$null | Out-Null
+        if ($LASTEXITCODE -ne 0) { return $false }
+    }
+    return $true
+}
+
+<#
+.SYNOPSIS
     Generates the "data:" YAML fragment of an ExternalSecret resource for a
     given remote secret path and key list.
 .DESCRIPTION
@@ -1575,5 +1711,10 @@ Export-ModuleMember -Function @(
     'Write-AzureKeyVaultSecret'
     'Write-AwsSecretsManagerSecret'
     'Write-GcpSecretManagerSecret'
+    'Remove-AzureKeyVaultSecret'
+    'Remove-AwsSecretsManagerSecret'
+    'Remove-GcpSecretManagerSecret'
     'Get-ExternalSecretData'
+    'Test-AutheliaInstalled'
+    'Get-BasicAuthIngresses'
 )
