@@ -696,8 +696,11 @@ function Get-IngressClass {
     $true if a Deployment named "authelia" exists in the "authelia" namespace.
 #>
 function Test-AutheliaInstalled {
-    & kubectl get deployment authelia -n authelia --ignore-not-found 2>$null | Out-Null
-    return $LASTEXITCODE -eq 0 -and $?
+    # NOT --ignore-not-found: that makes kubectl exit 0 even when the
+    # namespace itself doesn't exist, which would make this always return
+    # true. Check stdout content instead — empty means "not found".
+    $result = & kubectl get deployment authelia -n authelia -o name 2>$null
+    return -not [string]::IsNullOrWhiteSpace($result)
 }
 
 <#
