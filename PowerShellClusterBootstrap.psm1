@@ -88,7 +88,7 @@ function Install-Kubectl {
         $url = "https://dl.k8s.io/release/$version/bin/$os/$arch/kubectl$ext"
 
         try {
-            Invoke-ScriptBlockWithSpinner -Message "kubectl: Downloading $version..." -ScriptBlock {
+            Invoke-DownloadWithSpinner -Message "kubectl: Downloading $version..." -ScriptBlock {
                 param($Url, $OutFile, $Os)
                 Invoke-WebRequest -Uri $Url -OutFile $OutFile -UseBasicParsing
                 if ($Os -ne "windows") { chmod +x $OutFile }
@@ -125,7 +125,7 @@ function Install-Helm {
         $tmp = Join-Path $script:ToolsDir "helm-tmp"
 
         try {
-            Invoke-ScriptBlockWithSpinner -Message "helm: Downloading $version..." -ScriptBlock {
+            Invoke-DownloadWithSpinner -Message "helm: Downloading $version..." -ScriptBlock {
                 param($Url, $Zip, $Tmp, $Path)
                 Invoke-WebRequest -Uri $Url -OutFile $Zip -UseBasicParsing
                 Expand-Archive -Path $Zip -DestinationPath $Tmp -Force
@@ -168,7 +168,7 @@ function Install-RancherCli {
         $tmp = Join-Path $script:ToolsDir "rancher-cli-tmp"
 
         try {
-            Invoke-ScriptBlockWithSpinner -Message "rancher: Downloading $version..." -ScriptBlock {
+            Invoke-DownloadWithSpinner -Message "rancher: Downloading $version..." -ScriptBlock {
                 param($Url, $Zip, $Tmp, $Path)
                 Invoke-WebRequest -Uri $Url -OutFile $Zip -UseBasicParsing
                 Expand-Archive -Path $Zip -DestinationPath $Tmp -Force
@@ -223,7 +223,7 @@ function Install-PlatformTools {
                 $msi = Join-Path $env:TEMP "AzureCLI.msi"
                 $log = Join-Path $env:TEMP "AzureCLI_Install.log"
                 try {
-                    Invoke-ScriptBlockWithSpinner -Message "az: Downloading Azure CLI..." -ScriptBlock {
+                    Invoke-DownloadWithSpinner -Message "az: Downloading Azure CLI..." -ScriptBlock {
                         param($Url, $OutFile)
                         Invoke-WebRequest -Uri $Url -OutFile $OutFile -UseBasicParsing
                     } -ArgumentList @("https://aka.ms/installazurecliwindows", $msi) | Out-Null
@@ -253,7 +253,7 @@ function Install-PlatformTools {
                 $msi = Join-Path $env:TEMP "AWSCLIV2.msi"
                 $log = Join-Path $env:TEMP "AWSCLI_Install.log"
                 try {
-                    Invoke-ScriptBlockWithSpinner -Message "aws: Downloading AWS CLI..." -ScriptBlock {
+                    Invoke-DownloadWithSpinner -Message "aws: Downloading AWS CLI..." -ScriptBlock {
                         param($Url, $OutFile)
                         Invoke-WebRequest -Uri $Url -OutFile $OutFile -UseBasicParsing
                     } -ArgumentList @("https://awscli.amazonaws.com/AWSCLIV2.msi", $msi) | Out-Null
@@ -278,7 +278,7 @@ function Install-PlatformTools {
                 $zip = Join-Path $env:TEMP "eksctl.zip"
                 $tmp = Join-Path $env:TEMP "eksctl-tmp"
                 try {
-                    Invoke-ScriptBlockWithSpinner -Message "eksctl: Downloading..." -ScriptBlock {
+                    Invoke-DownloadWithSpinner -Message "eksctl: Downloading..." -ScriptBlock {
                         param($Url, $Zip, $Tmp, $Path)
                         Invoke-WebRequest -Uri $Url -OutFile $Zip -UseBasicParsing
                         Expand-Archive -Path $Zip -DestinationPath $Tmp -Force
@@ -303,7 +303,7 @@ function Install-PlatformTools {
             if (-not (Test-CommandExists "gcloud")) {
                 $exe = Join-Path $env:TEMP "gcloud-installer.exe"
                 try {
-                    Invoke-ScriptBlockWithSpinner -Message "gcloud: Downloading Google Cloud SDK..." -ScriptBlock {
+                    Invoke-DownloadWithSpinner -Message "gcloud: Downloading Google Cloud SDK..." -ScriptBlock {
                         param($Url, $OutFile)
                         Invoke-WebRequest -Uri $Url -OutFile $OutFile -UseBasicParsing
                     } -ArgumentList @("https://dl.google.com/dl/cloudsdk/channels/rapid/GoogleCloudSDKInstaller.exe", $exe) | Out-Null
@@ -370,7 +370,7 @@ function Install-PlatformTools {
             if (-not (Test-Path $path)) {
                 $url = "https://github.com/kubernetes-sigs/kind/releases/download/v0.20.0/kind-windows-amd64"
                 try {
-                    Invoke-ScriptBlockWithSpinner -Message "kind: Downloading..." -ScriptBlock {
+                    Invoke-DownloadWithSpinner -Message "kind: Downloading..." -ScriptBlock {
                         param($Url, $OutFile)
                         Invoke-WebRequest -Uri $Url -OutFile $OutFile -UseBasicParsing
                     } -ArgumentList @($url, $path) | Out-Null
@@ -389,7 +389,7 @@ function Install-PlatformTools {
             [Console]::Write("`r  | plink: Checking...")
             if (-not (Test-Path $plinkPath) -and -not (Get-Command "plink.exe" -ErrorAction SilentlyContinue)) {
                 try {
-                    Invoke-ScriptBlockWithSpinner -Message "plink: Downloading (PuTTY)..." -ScriptBlock {
+                    Invoke-DownloadWithSpinner -Message "plink: Downloading (PuTTY)..." -ScriptBlock {
                         param($Url, $OutFile)
                         Invoke-WebRequest -Uri $Url -OutFile $OutFile -UseBasicParsing
                     } -ArgumentList @("https://the.earth.li/~sgtatham/putty/latest/w64/plink.exe", $plinkPath) | Out-Null
@@ -1642,54 +1642,6 @@ function Remove-GcpSecretManagerSecret {
     return $true
 }
 
-<#
-.SYNOPSIS
-    Generates the "data:" YAML fragment of an ExternalSecret resource for a
-    given remote secret path and key list.
-.DESCRIPTION
-    Generic shape that works against any backend whose External Secrets
-    Operator SecretStore returns one property per key under a single remote
-    key path (which covers OpenBao KV-v2, Azure Key Vault via the property
-    suffix convention, AWS Secrets Manager JSON secrets, and GCP Secret
-    Manager JSON secrets). If -Platform isn't given, makes a best-effort
-    guess from state files present in -BaseDir.
-.PARAMETER Path
-    The remote secret's key/path in the backend.
-.PARAMETER Keys
-    The keys to extract, each becoming one secretKey/remoteRef.property pair.
-.PARAMETER BaseDir
-    Directory to look for state files in, when -Platform isn't given.
-.PARAMETER Platform
-    Optional explicit platform — skips the state-file guess.
-.EXAMPLE
-    PS> Get-ExternalSecretData -Path "grafana" -Keys @("adminPassword") -BaseDir $PSScriptRoot
-.OUTPUTS
-    System.String — a multi-line YAML fragment to splice into an
-    ExternalSecret's spec.data list.
-#>
-function Get-ExternalSecretData {
-    param(
-        [string]$Path,
-        [string[]]$Keys,
-        [string]$BaseDir,
-        [string]$Platform = ""
-    )
-
-    if ([string]::IsNullOrWhiteSpace($Platform)) {
-        if (Test-Path (Join-Path $BaseDir ".openbao-state.json"))       { $Platform = "RKE2 (On-Premise)" }
-        elseif (Test-Path (Join-Path $BaseDir ".aks-keyvault-state.json")) { $Platform = "Azure AKS" }
-    }
-
-    $lines = @()
-    foreach ($key in $Keys) {
-        $lines += "  - secretKey: $key"
-        $lines += "    remoteRef:"
-        $lines += "      key: $Path"
-        $lines += "      property: $key"
-    }
-    return $lines -join "`n"
-}
-
 Export-ModuleMember -Function @(
     'Set-ClusterBootstrapToolsDir'
     'Test-CommandExists'
@@ -1717,7 +1669,6 @@ Export-ModuleMember -Function @(
     'Remove-AzureKeyVaultSecret'
     'Remove-AwsSecretsManagerSecret'
     'Remove-GcpSecretManagerSecret'
-    'Get-ExternalSecretData'
     'Test-AutheliaInstalled'
     'Get-BasicAuthIngresses'
 )

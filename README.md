@@ -32,9 +32,9 @@ Two halves:
    life of the process so repeated calls don't re-authenticate every time.
 
 Everything else (`Reset-StuckHelmRelease`, `Get-IngressClass`,
-`Get-AksIngressIp`/`Get-EksIngressIp`, the `Write-*Secret` functions,
-`Get-ExternalSecretData`) is a standalone utility you reach for as needed —
-no setup, no shared state, just call them.
+`Get-AksIngressIp`/`Get-EksIngressIp`, the `Write-*Secret` functions) is a
+standalone utility you reach for as needed — no setup, no shared state, just
+call them.
 
 ### The state-file contract
 
@@ -102,7 +102,6 @@ installers, `C:\Windows\System32\drivers\etc\hosts`).
 | `Get-IngressClass` | Returns the cluster's default IngressClass (falls back to first available, then `"nginx"`). |
 | `Get-AksIngressIp` / `Get-EksIngressIp` | Poll a Service for its LoadBalancer IP (AKS) or hostname-then-resolve (EKS). |
 | `Write-AzureKeyVaultSecret` / `Write-AwsSecretsManagerSecret` / `Write-GcpSecretManagerSecret` | Write a secret to the respective cloud-native secret manager, one entry per key. |
-| `Get-ExternalSecretData` | Generates the `data:` YAML fragment of an ExternalSecret resource. |
 | `Update-HostsFile` | Adds/updates hostnames in the local hosts file, one UAC prompt for the whole batch. |
 | `Test-CommandExists` / `Get-Os` | Small lookups used internally and useful standalone. |
 | `Set-ClusterBootstrapToolsDir` | Override where downloaded CLI tools are cached (see Install above). |

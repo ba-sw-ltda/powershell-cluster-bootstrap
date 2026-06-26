@@ -79,7 +79,7 @@ FunctionsToExport = 'Set-ClusterBootstrapToolsDir', 'Test-CommandExists', 'Get-O
                'Set-ClusterContext', 'Write-AzureKeyVaultSecret',
                'Write-AwsSecretsManagerSecret', 'Write-GcpSecretManagerSecret',
                'Remove-AzureKeyVaultSecret', 'Remove-AwsSecretsManagerSecret',
-               'Remove-GcpSecretManagerSecret', 'Get-ExternalSecretData',
+               'Remove-GcpSecretManagerSecret',
                'Test-AutheliaInstalled', 'Get-BasicAuthIngresses'
 
 # Cmdlets to export from this module, for best performance, do not use wildcards and do not delete the entry, use an empty array if there are no cmdlets to export.
