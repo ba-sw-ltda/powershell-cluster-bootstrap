@@ -78,6 +78,8 @@ FunctionsToExport = 'Set-ClusterBootstrapToolsDir', 'Test-CommandExists', 'Get-O
                'Initialize-Rke2Cluster', 'Initialize-ClusterEnvironment', 
                'Set-ClusterContext', 'Write-AzureKeyVaultSecret',
                'Write-AwsSecretsManagerSecret', 'Write-GcpSecretManagerSecret',
+               'Get-AzureKeyVaultSecret', 'Get-AwsSecretsManagerSecret',
+               'Get-GcpSecretManagerSecret',
                'Remove-AzureKeyVaultSecret', 'Remove-AwsSecretsManagerSecret',
                'Remove-GcpSecretManagerSecret',
                'Test-AutheliaInstalled', 'Get-BasicAuthIngresses'

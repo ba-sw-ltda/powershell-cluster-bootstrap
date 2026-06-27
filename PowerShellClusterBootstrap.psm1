@@ -1558,6 +1558,90 @@ function Write-GcpSecretManagerSecret {
 
 <#
 .SYNOPSIS
+    Reads back a secret previously written by Write-AzureKeyVaultSecret.
+.DESCRIPTION
+    -Keys must be the same list (same count) passed to the original
+    Write-AzureKeyVaultSecret call — secret names are computed the same way
+    ("$Path" if one key, "$Path-$key" per key otherwise), so the count has
+    to match to land on the same names.
+.OUTPUTS
+    Hashtable of key/value for whichever keys were found, or $null if the
+    state file/vault is missing or nothing was found.
+#>
+function Get-AzureKeyVaultSecret {
+    param([string]$Path, [string[]]$Keys, [string]$BaseDir)
+
+    $stateFile = Join-Path $BaseDir ".aks-state.json"
+    if (-not (Test-Path $stateFile)) { return $null }
+    $vaultName = (Get-Content $stateFile | ConvertFrom-Json).VaultName
+    if (-not $vaultName) { return $null }
+
+    $result = @{}
+    foreach ($key in $Keys) {
+        $secretName = if ($Keys.Count -eq 1) { $Path } else { "$Path-$key" }
+        $value = & az keyvault secret show --vault-name $vaultName --name $secretName --query value --output tsv 2>$null
+        if ($LASTEXITCODE -eq 0 -and $value) { $result[$key] = $value }
+    }
+    if ($result.Count -eq 0) { return $null }
+    return $result
+}
+
+<#
+.SYNOPSIS
+    Reads back a secret previously written by Write-AwsSecretsManagerSecret.
+.DESCRIPTION
+    Same -Keys-count-must-match contract as Get-AzureKeyVaultSecret.
+.OUTPUTS
+    Hashtable of key/value for whichever keys were found, or $null if the
+    state file/region is missing or nothing was found.
+#>
+function Get-AwsSecretsManagerSecret {
+    param([string]$Path, [string[]]$Keys, [string]$BaseDir)
+
+    $stateFile = Join-Path $BaseDir ".eks-state.json"
+    if (-not (Test-Path $stateFile)) { return $null }
+    $region = (Get-Content $stateFile | ConvertFrom-Json).Region
+    if (-not $region) { return $null }
+
+    $result = @{}
+    foreach ($key in $Keys) {
+        $secretName = if ($Keys.Count -eq 1) { $Path } else { "$Path-$key" }
+        $value = & aws secretsmanager get-secret-value --secret-id $secretName --region $region --query SecretString --output text 2>$null
+        if ($LASTEXITCODE -eq 0 -and $value) { $result[$key] = $value }
+    }
+    if ($result.Count -eq 0) { return $null }
+    return $result
+}
+
+<#
+.SYNOPSIS
+    Reads back a secret previously written by Write-GcpSecretManagerSecret.
+.DESCRIPTION
+    Same -Keys-count-must-match contract as Get-AzureKeyVaultSecret.
+.OUTPUTS
+    Hashtable of key/value for whichever keys were found, or $null if the
+    state file/project is missing or nothing was found.
+#>
+function Get-GcpSecretManagerSecret {
+    param([string]$Path, [string[]]$Keys, [string]$BaseDir)
+
+    $stateFile = Join-Path $BaseDir ".gke-state.json"
+    if (-not (Test-Path $stateFile)) { return $null }
+    $projectId = (Get-Content $stateFile | ConvertFrom-Json).ProjectId
+    if (-not $projectId) { return $null }
+
+    $result = @{}
+    foreach ($key in $Keys) {
+        $secretName = if ($Keys.Count -eq 1) { $Path } else { "$Path-$key" }
+        $value = & gcloud secrets versions access latest --secret=$secretName --project $projectId 2>$null
+        if ($LASTEXITCODE -eq 0 -and $value) { $result[$key] = $value }
+    }
+    if ($result.Count -eq 0) { return $null }
+    return $result
+}
+
+<#
+.SYNOPSIS
     Deletes a secret previously written by Write-AzureKeyVaultSecret.
 .DESCRIPTION
     Soft-delete — Azure Key Vault has soft-delete protection on by default
@@ -1669,6 +1753,9 @@ Export-ModuleMember -Function @(
     'Write-AzureKeyVaultSecret'
     'Write-AwsSecretsManagerSecret'
     'Write-GcpSecretManagerSecret'
+    'Get-AzureKeyVaultSecret'
+    'Get-AwsSecretsManagerSecret'
+    'Get-GcpSecretManagerSecret'
     'Remove-AzureKeyVaultSecret'
     'Remove-AwsSecretsManagerSecret'
     'Remove-GcpSecretManagerSecret'
