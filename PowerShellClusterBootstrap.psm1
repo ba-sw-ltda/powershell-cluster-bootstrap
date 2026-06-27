@@ -705,13 +705,16 @@ function Test-AutheliaInstalled {
 
 <#
 .SYNOPSIS
-    Finds every Ingress still protected by the Basic-Auth fallback (stamped by
-    Protect-ComponentIngress with a "baseline.io/vault-path" annotation when
-    Authelia wasn't installed yet).
+    Finds every Ingress still protected by the old Basic-Auth fallback
+    (stamped with a "baseline.io/vault-path" annotation back when Authelia
+    was optional and Protect-ComponentIngress could fall back to per-app
+    Basic-Auth).
 .DESCRIPTION
-    Used by Authelia's own installer to migrate pre-existing Basic-Auth
-    components over to forward-auth — independent of install ordering, and
-    covers components set up in a previous, separate installer run.
+    Authelia is mandatory baseline now and Protect-ComponentIngress no longer
+    creates Basic-Auth Ingresses at all — this only ever finds leftovers on a
+    cluster that was originally set up under the old optional-Authelia model.
+    Used by Authelia's own installer as a one-time upgrade path to migrate
+    those over to forward-auth.
 .OUTPUTS
     Array of hashtables: @{ Name; Namespace; Hostname; VaultPath }
 #>
