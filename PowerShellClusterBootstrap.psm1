@@ -1207,12 +1207,22 @@ function Initialize-Rke2Cluster {
 
     $env:KUBECONFIG = $KubeconfigPath
 
+    # Invoke-WithSpinner merges stdout+stderr (2>&1) inside its background job —
+    # any stray stderr line (API server warning, transient connectivity notice
+    # on a retry, ...) gets counted as an extra "node" by Measure-Object below.
+    # Confirmed live: reported "5 node(s) ready" against a real 3-node cluster.
+    # Invoke-ScriptBlockWithSpinner lets stderr be discarded explicitly instead.
     do {
-        $nodesRef = [ref]$null
-        $exitCode = Invoke-WithSpinner -Message "Verifying cluster connectivity..." `
-            -Executable "kubectl" -Arguments @("get", "nodes", "--no-headers") -OutputVariable $nodesRef
+        $nodesResult = Invoke-ScriptBlockWithSpinner -Message "Verifying cluster connectivity..." -ScriptBlock {
+            param($path, $kubeconfig)
+            $env:PATH = $path
+            $env:KUBECONFIG = $kubeconfig
+            $out = & kubectl get nodes --no-headers 2>$null
+            [PSCustomObject]@{ Output = $out; ExitCode = $LASTEXITCODE }
+        } -ArgumentList @($env:PATH, $env:KUBECONFIG)
+        $exitCode = $nodesResult.ExitCode
     } while ($exitCode -ne 0 -and (Confirm-RetryOrExit -Reason "Cannot reach cluster. Check kubeconfig and that the cluster is running."))
-    $nodeCount = ($nodesRef.Value | Measure-Object).Count
+    $nodeCount = (@($nodesResult.Output) | Where-Object { $_ -and $_.Trim() } | Measure-Object).Count
     Write-Host "  ✓ Connected — $nodeCount node(s) ready" -ForegroundColor Green
     return $true
 }
