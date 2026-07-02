@@ -1361,7 +1361,6 @@ function Set-ClusterContext {
         "RKE2 (On-Premise)" {
             $s = Get-Content (Join-Path $BaseDir ".rke2-state.json") | ConvertFrom-Json
             $env:KUBECONFIG = $s.KubeconfigPath -replace '^~', $env:USERPROFILE
-            if (-not $alreadySet) { Write-Host "  Cluster: $($s.SshServer)  [RKE2]" -ForegroundColor DarkGray }
         }
         "Azure AKS" {
             $s        = Get-Content (Join-Path $BaseDir ".aks-state.json") | ConvertFrom-Json
@@ -1373,7 +1372,6 @@ function Set-ClusterContext {
             }
             $env:KUBECONFIG = $kubefile
             & kubectl config use-context $s.ClusterName 2>$null | Out-Null
-            if (-not $alreadySet) { Write-Host "  Cluster: $($s.ClusterName)  ($($s.ResourceGroup) · $($s.Location))  [AKS]" -ForegroundColor DarkGray }
         }
         "AWS EKS" {
             $s        = Get-Content (Join-Path $BaseDir ".eks-state.json") | ConvertFrom-Json
@@ -1384,7 +1382,6 @@ function Set-ClusterContext {
             $env:KUBECONFIG = $kubefile
             $eksCtx = & kubectl config get-contexts --output name 2>$null | Where-Object { $_ -like "*$($s.ClusterName)*" } | Select-Object -First 1
             if ($eksCtx) { & kubectl config use-context $eksCtx 2>$null | Out-Null }
-            if (-not $alreadySet) { Write-Host "  Cluster: $($s.ClusterName)  ($($s.Region))  [EKS]" -ForegroundColor DarkGray }
         }
         "Google GKE" {
             $s        = Get-Content (Join-Path $BaseDir ".gke-state.json") | ConvertFrom-Json
@@ -1396,7 +1393,6 @@ function Set-ClusterContext {
             }
             $env:KUBECONFIG = $kubefile
             & kubectl config use-context $s.ClusterName 2>$null | Out-Null
-            if (-not $alreadySet) { Write-Host "  Cluster: $($s.ClusterName)  ($($s.Zone))  [GKE]" -ForegroundColor DarkGray }
         }
         "Kind (Local)" {
             $kindState = Join-Path $BaseDir ".kind-state.json"
@@ -1411,7 +1407,6 @@ function Set-ClusterContext {
                 }
                 $env:KUBECONFIG = $kubefile
                 & kubectl config use-context "kind-$($s.ClusterName)" 2>$null | Out-Null
-                if (-not $alreadySet) { Write-Host "  Cluster: $($s.ClusterName)  [Kind]" -ForegroundColor DarkGray }
             }
         }
     }
